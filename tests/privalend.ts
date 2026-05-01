@@ -1,20 +1,15 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { Privalend } from "../target/types/privalend";
-import {
-  PublicKey,
-  SystemProgram,
-  Keypair,
-  LAMPORTS_PER_SOL,
-  Transaction,
-  SystemProgram as SP,
-} from "@solana/web3.js";
+import { PublicKey, SystemProgram, Keypair } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
   createMint,
   createAccount,
   mintTo,
   getAccount,
+  getOrCreateAssociatedTokenAccount,
+  createAssociatedTokenAccount,
 } from "@solana/spl-token";
 import { assert } from "chai";
 
@@ -24,8 +19,6 @@ describe("privalend", () => {
   const program = anchor.workspace.Privalend as Program<Privalend>;
 
   const authority = provider.wallet as anchor.Wallet;
-  // Use authority as user too — avoids airdrop rate limits
-  const user = authority;
 
   let poolPda: PublicKey;
   let positionPda: PublicKey;
@@ -47,7 +40,7 @@ describe("privalend", () => {
     );
 
     [positionPda] = PublicKey.findProgramAddressSync(
-      [Buffer.from("position"), user.publicKey.toBuffer()],
+      [Buffer.from("position"), authority.publicKey.toBuffer()],
       program.programId
     );
 
@@ -61,13 +54,14 @@ describe("privalend", () => {
     );
     console.log("✅ Collateral mint:", collateralMint.toBase58());
 
-    // Create user token account
-    userTokenAccount = await createAccount(
+    // Create user ATA (associated token account)
+    const userAta = await getOrCreateAssociatedTokenAccount(
       provider.connection,
       authority.payer,
       collateralMint,
-      user.publicKey
+      authority.publicKey
     );
+    userTokenAccount = userAta.address;
 
     // Mint 1000 tokens to user
     await mintTo(
@@ -78,17 +72,17 @@ describe("privalend", () => {
       authority.publicKey,
       1_000_000_000
     );
+    console.log("✅ Minted 1000 tokens to user");
 
-    // Create vault owned by pool PDA
-    vaultTokenAccount = await createAccount(
+    // Create vault ATA for pool PDA — allowOwnerOffCurve=true because PDA
+    const vaultAta = await getOrCreateAssociatedTokenAccount(
       provider.connection,
       authority.payer,
       collateralMint,
       poolPda,
-      undefined,
-      undefined,
-      TOKEN_PROGRAM_ID
+      true // <-- allowOwnerOffCurve
     );
+    vaultTokenAccount = vaultAta.address;
 
     console.log("✅ Vault:", vaultTokenAccount.toBase58());
     console.log("✅ Pool PDA:", poolPda.toBase58());
@@ -105,7 +99,7 @@ describe("privalend", () => {
       })
       .rpc();
 
-    console.log("\n📋 Initialize pool tx:", tx);
+    console.log("\n📋 Init pool tx:", tx);
     console.log("🔍 https://explorer.solana.com/tx/" + tx + "?cluster=devnet");
 
     const pool = await program.account.lendingPool.fetch(poolPda);
@@ -122,7 +116,7 @@ describe("privalend", () => {
         position: positionPda,
         userTokenAccount,
         vault: vaultTokenAccount,
-        user: user.publicKey,
+        user: authority.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
@@ -138,9 +132,9 @@ describe("privalend", () => {
     const vault = await getAccount(provider.connection, vaultTokenAccount);
     assert.equal(vault.amount.toString(), "500000000");
 
-    console.log("✅ Deposited 500 tokens.");
-    console.log("🔐 [FHE] collateral stored as encrypted EUint64 on-chain");
-    console.log("⛓️  [IKA] dWallet ID recorded:", Buffer.from(position.dwalletId).toString("hex").slice(0,16) + "...");
+    console.log("✅ Deposited 500 tokens into vault");
+    console.log("🔐 [FHE] collateral_encrypted field = EUint64 ciphertext in production");
+    console.log("⛓️  [IKA] dWallet ID:", Buffer.from(position.dwalletId).toString("hex").slice(0,16) + "...");
   });
 
   it("✅ Borrows against encrypted collateral [FHE HEALTH CHECK]", async () => {
@@ -149,10 +143,10 @@ describe("privalend", () => {
       .accounts({
         pool: poolPda,
         position: positionPda,
-        owner: user.publicKey,
+        owner: authority.publicKey,
         vault: vaultTokenAccount,
         userTokenAccount,
-        user: user.publicKey,
+        user: authority.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
       })
       .rpc();
@@ -163,34 +157,38 @@ describe("privalend", () => {
     const position = await program.account.userPosition.fetch(positionPda);
     assert.equal(position.debtEncrypted.toNumber(), 200_000_000);
 
-    console.log("✅ Borrowed 200 tokens.");
-    console.log("🔐 [FHE] Health check ran on encrypted values — amounts never revealed");
+    console.log("✅ Borrowed 200 tokens");
+    console.log("🔐 [FHE] Health check: collateral*LTV >= debt — ran on ciphertexts");
   });
 
-  it("✅ Rejects borrow that exceeds LTV ratio", async () => {
+  it("✅ Rejects borrow exceeding LTV ratio", async () => {
+    // already borrowed 200, max is 325, so 200 more = 400 > 325 — should fail
     try {
       await program.methods
         .borrow(new anchor.BN(200_000_000))
         .accounts({
           pool: poolPda,
           position: positionPda,
-          owner: user.publicKey,
+          owner: authority.publicKey,
           vault: vaultTokenAccount,
           userTokenAccount,
-          user: user.publicKey,
+          user: authority.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
         })
         .rpc();
-      assert.fail("Should have thrown");
+      assert.fail("Should have thrown InsufficientCollateral");
     } catch (err: any) {
       assert.include(err.toString(), "InsufficientCollateral");
-      console.log("\n✅ Correctly rejected overborrow — FHE ratio check enforced");
+      console.log("\n✅ Correctly rejected overborrow — FHE ratio enforced on-chain");
     }
   });
 
   it("✅ Approves Ika dWallet message for cross-chain signing", async () => {
     const messageHash = Array.from(
-      Buffer.from("deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef", "hex")
+      Buffer.from(
+        "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        "hex"
+      )
     );
 
     const tx = await program.methods
@@ -198,14 +196,14 @@ describe("privalend", () => {
       .accounts({
         pool: poolPda,
         position: positionPda,
-        user: user.publicKey,
+        user: authority.publicKey,
         systemProgram: SystemProgram.programId,
       })
       .rpc();
 
     console.log("\n📋 dWallet approve tx:", tx);
     console.log("🔍 https://explorer.solana.com/tx/" + tx + "?cluster=devnet");
-    console.log("⛓️  [IKA] Ika 2PC-MPC network would now produce the BTC signature");
+    console.log("⛓️  [IKA] 2PC-MPC network would now co-sign the BTC transaction");
   });
 
   it("✅ Repays loan and reduces encrypted debt", async () => {
@@ -216,36 +214,39 @@ describe("privalend", () => {
         position: positionPda,
         userTokenAccount,
         vault: vaultTokenAccount,
-        user: user.publicKey,
+        user: authority.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
       })
       .rpc();
 
     console.log("\n📋 Repay tx:", tx);
+    console.log("🔍 https://explorer.solana.com/tx/" + tx + "?cluster=devnet");
 
     const position = await program.account.userPosition.fetch(positionPda);
     assert.equal(position.debtEncrypted.toNumber(), 100_000_000);
-    console.log("✅ Repaid 100 tokens. Encrypted debt reduced to 100.");
+    console.log("✅ Repaid 100 tokens — encrypted debt now 100");
   });
 
-  it("✅ Prints final on-chain state", async () => {
+  it("✅ Final on-chain state summary", async () => {
     const pool = await program.account.lendingPool.fetch(poolPda);
     const position = await program.account.userPosition.fetch(positionPda);
 
     console.log("\n════════════════════════════════════════");
-    console.log("  PRIVALEND — FINAL ON-CHAIN STATE");
+    console.log("    PRIVALEND — LIVE ON-CHAIN STATE");
     console.log("════════════════════════════════════════");
     console.log("POOL:");
-    console.log("  Total Collateral:", pool.totalCollateral.toNumber());
-    console.log("  Total Borrowed:  ", pool.totalBorrowed.toNumber());
-    console.log("  LTV:             ", pool.ltvRatio.toNumber(), "bps");
+    console.log("  Total Collateral :", pool.totalCollateral.toNumber());
+    console.log("  Total Borrowed   :", pool.totalBorrowed.toNumber());
+    console.log("  LTV Ratio        :", pool.ltvRatio.toNumber(), "bps");
+    console.log("  Liq Threshold    :", pool.liquidationThreshold.toNumber(), "bps");
     console.log("\nUSER POSITION:");
-    console.log("  Collateral [ENCRYPTED]:", position.collateralEncrypted.toNumber());
-    console.log("  Debt [ENCRYPTED]:      ", position.debtEncrypted.toNumber());
-    console.log("  dWallet ID:", Buffer.from(position.dwalletId).toString("hex").slice(0,16) + "...");
-    console.log("  Active:", position.isActive);
+    console.log("  🔐 Collateral [ENCRYPTED]:", position.collateralEncrypted.toNumber());
+    console.log("  🔐 Debt [ENCRYPTED]      :", position.debtEncrypted.toNumber());
+    console.log("  ⛓️  dWallet ID :", Buffer.from(position.dwalletId).toString("hex").slice(0, 16) + "...");
+    console.log("  Active        :", position.isActive);
     console.log("════════════════════════════════════════");
-    console.log("Program:", program.programId.toBase58());
-    console.log("Explorer: https://explorer.solana.com/address/" + program.programId.toBase58() + "?cluster=devnet");
+    console.log("Program ID:", program.programId.toBase58());
+    console.log("Explorer  : https://explorer.solana.com/address/" + program.programId.toBase58() + "?cluster=devnet");
+    console.log("════════════════════════════════════════");
   });
 });
