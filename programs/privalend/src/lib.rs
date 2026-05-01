@@ -1,3 +1,4 @@
+#![allow(ambiguous_glob_reexports)]
 use anchor_lang::prelude::*;
 
 declare_id!("11111111111111111111111111111112");
@@ -6,10 +7,14 @@ pub mod errors;
 pub mod instructions;
 pub mod state;
 
-use instructions::{
-    InitializePool, DepositCollateral, Borrow,
-    Repay, Liquidate, ApproveDwalletMessage,
-};
+// Re-export everything from each instruction module to crate root.
+// Anchor's #[program] macro needs __client_accounts_* types here.
+pub use instructions::initialize::*;
+pub use instructions::deposit::*;
+pub use instructions::borrow::*;
+pub use instructions::repay::*;
+pub use instructions::liquidate::*;
+pub use instructions::dwallet::*;
 
 #[program]
 pub mod privalend {
