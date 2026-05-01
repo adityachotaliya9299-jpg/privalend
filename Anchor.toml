@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-privalend = "11111111111111111111111111111112"
+privalend = "7WLWShzAzU747a5WVSTHJ7YUNPGPSyjewetJ5YfNA7Sb"
 
 [registry]
 url = "https://api.apr.dev"
