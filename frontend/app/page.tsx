@@ -1,11 +1,16 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import dynamic from "next/dynamic";
+const WalletMultiButton = dynamic(
+  () => import("@solana/wallet-adapter-react-ui").then(m => m.WalletMultiButton),
+  { ssr: false }
+);
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { AnchorProvider, Program, BN, Idl } from "@coral-xyz/anchor";
 import { TOKEN_PROGRAM_ID, getOrCreateAssociatedTokenAccount, createMint, mintTo } from "@solana/spl-token";
 import { PROGRAM_ID, getPoolPda, getPositionPda, explorerTx, explorerAddr, shortAddr } from "./lib/program";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 import idl from "./idl/privalend.json";
 
 type Tx = { sig: string; label: string; time: string };
@@ -24,7 +29,7 @@ export default function Home() {
   const getProgram = useCallback(() => {
     if (!wallet.publicKey || !wallet.signTransaction) return null;
     const provider = new AnchorProvider(connection, wallet as any, { commitment: "confirmed" });
-    return new Program(idl as Idl, provider);
+    return new Program(idl as Idl, provider) as any;
   }, [connection, wallet]);
 
   const logTx = (sig: string, label: string) => {
@@ -38,7 +43,7 @@ export default function Home() {
       const poolPda = getPoolPda();
       const positionPda = getPositionPda(wallet.publicKey);
       try { setPool(await program.account.lendingPool.fetch(poolPda)); } catch {}
-      try { setPosition(await program.account.userPosition.fetch(positionPda)); } catch {}
+     try { setPosition(await program.account.userPosition.fetch(positionPda)); } catch {}
     } catch {}
   }, [getProgram, wallet.publicKey]);
 
