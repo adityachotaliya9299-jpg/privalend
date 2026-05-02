@@ -215,7 +215,7 @@ export default function Home() {
     try {
       const poolPda = getPoolPda();
       const positionPda = getPositionPda(wallet.publicKey);
-      const messageHash = Array.from(Buffer.alloc(32, 0xde));
+      const messageHash = Array.from(crypto.getRandomValues(new Uint8Array(32)));
       const sig = await program.methods
         .approveDwalletMessage(messageHash)
         .accounts({
