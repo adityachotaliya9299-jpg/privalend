@@ -1,5 +1,6 @@
 "use client";
 import "./globals.css";
+import dynamic from "next/dynamic";
 import { useMemo } from "react";
 import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
 import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
@@ -9,13 +10,16 @@ import { clusterApiUrl } from "@solana/web3.js";
 import "@solana/wallet-adapter-react-ui/styles.css";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  if (typeof window === "undefined") return (
+    <html lang="en"><body suppressHydrationWarning>{children}</body></html>
+  );
   const network = WalletAdapterNetwork.Devnet;
   const endpoint = useMemo(() => clusterApiUrl(network), [network]);
   const wallets = useMemo(() => [new PhantomWalletAdapter(), new SolflareWalletAdapter()], [network]);
 
   return (
     <html lang="en">
-      <body>
+      <body suppressHydrationWarning>
         <ConnectionProvider endpoint={endpoint}>
           <WalletProvider wallets={wallets} autoConnect>
             <WalletModalProvider>{children}</WalletModalProvider>

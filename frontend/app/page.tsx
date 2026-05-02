@@ -6,7 +6,7 @@ import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { AnchorProvider, Program, BN, Idl } from "@coral-xyz/anchor";
 import { TOKEN_PROGRAM_ID, getOrCreateAssociatedTokenAccount, createMint, mintTo } from "@solana/spl-token";
 import { PROGRAM_ID, getPoolPda, getPositionPda, explorerTx, explorerAddr, shortAddr } from "./lib/program";
-import idl from "../target/idl/privalend.json";
+import idl from "./idl/privalend.json";
 
 type Tx = { sig: string; label: string; time: string };
 
