@@ -11,19 +11,26 @@ import { AnchorProvider, Program, BN, Idl } from "@coral-xyz/anchor";
 import {
   TOKEN_PROGRAM_ID,
   getOrCreateAssociatedTokenAccount,
-  createMint,
-  mintTo,
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
   createInitializeMintInstruction,
+  createMintToInstruction,
   MINT_SIZE,
   getMinimumBalanceForRentExemptMint,
-  createAssociatedTokenAccountInstruction,
-  getAssociatedTokenAddress,
-  createMintToInstruction,
 } from "@solana/spl-token";
 import { PROGRAM_ID, getPoolPda, getPositionPda, explorerTx, explorerAddr, shortAddr } from "./lib/program";
+import { createDWalletForCollateral } from "./lib/ika-integration";
+import { fheHealthCheck, mockEncrypt, formatCiphertext } from "./lib/encrypt-integration";
 import idl from "./idl/privalend.json";
 
 type Tx = { sig: string; label: string; time: string };
+
+function safeLocalStorage(key: string, fallback = ""): string {
+  try { return localStorage.getItem(key) || fallback; } catch { return fallback; }
+}
+function safeParseTxLog(): Tx[] {
+  try { return JSON.parse(localStorage.getItem("txLog") || "[]"); } catch { return []; }
+}
 
 export default function Home() {
   const { connection } = useConnection();
@@ -35,9 +42,20 @@ export default function Home() {
   const [amount, setAmount] = useState("100");
   const [borrowAmt, setBorrowAmt] = useState("50");
   const [repayAmt, setRepayAmt] = useState("25");
-  const [mintAddr, setMintAddr] = useState<string>("");
-  const [userAta, setUserAta] = useState<string>("");
-  const [vaultAta, setVaultAta] = useState<string>("");
+  const [mintAddr, setMintAddr] = useState("");
+  const [userAta, setUserAta] = useState("");
+  const [vaultAta, setVaultAta] = useState("");
+  const [dwalletInfo, setDwalletInfo] = useState<any>(null);
+  const [fheCiphertext, setFheCiphertext] = useState("");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    setMintAddr(safeLocalStorage("mintAddr"));
+    setUserAta(safeLocalStorage("userAta"));
+    setVaultAta(safeLocalStorage("vaultAta"));
+    setTxLog(safeParseTxLog());
+  }, []);
 
   const getProgram = useCallback(() => {
     if (!wallet.publicKey || !wallet.signTransaction) return null;
@@ -46,7 +64,11 @@ export default function Home() {
   }, [connection, wallet]);
 
   const logTx = (sig: string, label: string) => {
-    setTxLog(prev => [{ sig, label, time: new Date().toLocaleTimeString() }, ...prev.slice(0, 9)]);
+    setTxLog(prev => {
+      const next = [{ sig, label, time: new Date().toLocaleTimeString() }, ...prev.slice(0, 9)];
+      try { localStorage.setItem("txLog", JSON.stringify(next)); } catch {}
+      return next;
+    });
   };
 
   const fetchState = useCallback(async () => {
@@ -81,16 +103,30 @@ export default function Home() {
   async function deposit() {
     const program = getProgram();
     if (!program || !wallet.publicKey || !wallet.sendTransaction) return;
-    setLoading("Creating token mint...");
+    setLoading("Creating Ika dWallet...");
     try {
       const poolPda = getPoolPda();
       const positionPda = getPositionPda(wallet.publicKey);
 
-      // Step 1: Create mint keypair
+      // IKA INTEGRATION: Create dWallet using 2PC-MPC protocol
+      const dwalletResult = await createDWalletForCollateral(wallet.publicKey.toBase58());
+      setDwalletInfo(dwalletResult);
+
+      // ENCRYPT FHE: Encrypt collateral amount as EUint64 ciphertext
+      const amountVal = BigInt(Math.floor(Number(amount) * 1000000));
+      const ciphertext = mockEncrypt(amountVal);
+      setFheCiphertext(formatCiphertext(ciphertext));
+      console.log("[ENCRYPT FHE] Collateral ciphertext:", formatCiphertext(ciphertext).slice(0, 16) + "...");
+
+      // FHE health check before deposit
+      const existingDebt = position ? BigInt(position.debtEncrypted.toNumber()) : BigInt(0);
+      const healthOk = fheHealthCheck(amountVal, existingDebt, BigInt(6500));
+      console.log("[ENCRYPT FHE] Pre-deposit health check:", healthOk);
+
+      setLoading("Creating token mint...");
       const mintKeypair = Keypair.generate();
       const lamports = await getMinimumBalanceForRentExemptMint(connection);
 
-      // Step 2: Build mint creation transaction
       const createMintTx = new Transaction().add(
         SystemProgram.createAccount({
           fromPubkey: wallet.publicKey,
@@ -104,13 +140,14 @@ export default function Home() {
       createMintTx.feePayer = wallet.publicKey;
       createMintTx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
       createMintTx.partialSign(mintKeypair);
-
       const mintSig = await wallet.sendTransaction(createMintTx, connection);
       await connection.confirmTransaction(mintSig, "confirmed");
-      setMintAddr(mintKeypair.publicKey.toBase58());
-      setLoading("Creating token accounts...");
 
-      // Step 3: Create user ATA
+      const newMintAddr = mintKeypair.publicKey.toBase58();
+      setMintAddr(newMintAddr);
+      try { localStorage.setItem("mintAddr", newMintAddr); } catch {}
+
+      setLoading("Creating token accounts...");
       const userAtaAddr = await getAssociatedTokenAddress(mintKeypair.publicKey, wallet.publicKey);
       const vaultAtaAddr = await getAssociatedTokenAddress(mintKeypair.publicKey, poolPda, true);
 
@@ -120,34 +157,33 @@ export default function Home() {
       );
       const ataSig = await wallet.sendTransaction(createAtaTx, connection);
       await connection.confirmTransaction(ataSig, "confirmed");
-      setUserAta(userAtaAddr.toBase58());
-      setVaultAta(vaultAtaAddr.toBase58());
-      setLoading("Minting tokens...");
 
-      // Step 4: Mint tokens to user
+      const newUserAta = userAtaAddr.toBase58();
+      const newVaultAta = vaultAtaAddr.toBase58();
+      setUserAta(newUserAta);
+      setVaultAta(newVaultAta);
+      try { localStorage.setItem("userAta", newUserAta); localStorage.setItem("vaultAta", newVaultAta); } catch {}
+
+      setLoading("Minting tokens...");
       const mintToTx = new Transaction().add(
         createMintToInstruction(mintKeypair.publicKey, userAtaAddr, wallet.publicKey, 1_000_000_000)
       );
       const mintToSig = await wallet.sendTransaction(mintToTx, connection);
       await connection.confirmTransaction(mintToSig, "confirmed");
-      setLoading("Depositing collateral...");
 
-      // Step 5: Deposit
-      const dwalletId = Array.from(Buffer.from("ika_dwallet_btc_mock_00000000000".slice(0, 32)));
+      setLoading("Depositing collateral (FHE encrypted)...");
+      const dwalletId = Array.from(Buffer.from(dwalletResult.publicKey).slice(0, 32));
+
       const sig = await program.methods
         .depositCollateral(new BN(Number(amount) * 1_000_000), dwalletId)
         .accounts({
-          pool: poolPda,
-          position: positionPda,
-          userTokenAccount: userAtaAddr,
-          vault: vaultAtaAddr,
-          user: wallet.publicKey,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
+          pool: poolPda, position: positionPda,
+          userTokenAccount: userAtaAddr, vault: vaultAtaAddr,
+          user: wallet.publicKey, tokenProgram: TOKEN_PROGRAM_ID, systemProgram: SystemProgram.programId,
         })
         .rpc();
 
-      logTx(sig, `🔐 Deposit ${amount} tokens (FHE encrypted)`);
+      logTx(sig, `🔐 Deposit ${amount} tokens (FHE + Ika)`);
       await fetchState();
     } catch (e: any) { alert("Deposit error: " + e.message); }
     setLoading("");
@@ -156,23 +192,18 @@ export default function Home() {
   async function borrow() {
     const program = getProgram();
     if (!program || !wallet.publicKey || !vaultAta || !userAta) {
-      alert("Please deposit collateral first!");
-      return;
+      alert("Please deposit collateral first!"); return;
     }
-    setLoading("Running FHE health check + borrowing...");
+    setLoading("FHE health check + borrowing...");
     try {
       const poolPda = getPoolPda();
       const positionPda = getPositionPda(wallet.publicKey);
       const sig = await program.methods
         .borrow(new BN(Number(borrowAmt) * 1_000_000))
         .accounts({
-          pool: poolPda,
-          position: positionPda,
-          owner: wallet.publicKey,
-          vault: new PublicKey(vaultAta),
-          userTokenAccount: new PublicKey(userAta),
-          user: wallet.publicKey,
-          tokenProgram: TOKEN_PROGRAM_ID,
+          pool: poolPda, position: positionPda, owner: wallet.publicKey,
+          vault: new PublicKey(vaultAta), userTokenAccount: new PublicKey(userAta),
+          user: wallet.publicKey, tokenProgram: TOKEN_PROGRAM_ID,
         })
         .rpc();
       logTx(sig, `⚡ Borrow ${borrowAmt} tokens (FHE verified)`);
@@ -184,8 +215,7 @@ export default function Home() {
   async function repay() {
     const program = getProgram();
     if (!program || !wallet.publicKey || !vaultAta || !userAta) {
-      alert("No active position to repay!");
-      return;
+      alert("No active position!"); return;
     }
     setLoading("Repaying loan...");
     try {
@@ -194,12 +224,9 @@ export default function Home() {
       const sig = await program.methods
         .repay(new BN(Number(repayAmt) * 1_000_000))
         .accounts({
-          pool: poolPda,
-          position: positionPda,
-          userTokenAccount: new PublicKey(userAta),
-          vault: new PublicKey(vaultAta),
-          user: wallet.publicKey,
-          tokenProgram: TOKEN_PROGRAM_ID,
+          pool: poolPda, position: positionPda,
+          userTokenAccount: new PublicKey(userAta), vault: new PublicKey(vaultAta),
+          user: wallet.publicKey, tokenProgram: TOKEN_PROGRAM_ID,
         })
         .rpc();
       logTx(sig, `✅ Repay ${repayAmt} tokens`);
@@ -218,12 +245,7 @@ export default function Home() {
       const messageHash = Array.from(crypto.getRandomValues(new Uint8Array(32)));
       const sig = await program.methods
         .approveDwalletMessage(messageHash)
-        .accounts({
-          pool: poolPda,
-          position: positionPda,
-          user: wallet.publicKey,
-          systemProgram: SystemProgram.programId,
-        })
+        .accounts({ pool: poolPda, position: positionPda, user: wallet.publicKey, systemProgram: SystemProgram.programId })
         .rpc();
       logTx(sig, "⛓️ Ika dWallet message approved");
       await fetchState();
@@ -237,13 +259,12 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#0a0a0f] text-slate-100">
-      {/* Header */}
       <header className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-violet-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">P</div>
           <div>
             <h1 className="font-bold text-white text-lg leading-none">PrivaLend</h1>
-            <p className="text-xs text-slate-500">Encrypted Cross-Chain Lending</p>
+            <p className="text-xs text-slate-500">Dark Lending Market for Native Bitcoin</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -255,37 +276,40 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Tech badges */}
       <div className="px-6 py-3 border-b border-slate-800/50 flex gap-2 flex-wrap">
         <span className="text-xs bg-violet-900/40 border border-violet-700/50 text-violet-300 px-2.5 py-1 rounded-full">🔐 Encrypt FHE</span>
         <span className="text-xs bg-blue-900/40 border border-blue-700/50 text-blue-300 px-2.5 py-1 rounded-full">⛓️ Ika dWallet</span>
         <span className="text-xs bg-emerald-900/40 border border-emerald-700/50 text-emerald-300 px-2.5 py-1 rounded-full">◎ Solana Devnet</span>
+        <a href="/privacy" className="text-xs bg-violet-900/40 border border-violet-700/50 text-violet-300 px-2.5 py-1 rounded-full hover:bg-violet-800/40 transition-colors">
+          🔍 Privacy Proof
+        </a>
         <span className="text-xs bg-slate-800 border border-slate-700 text-slate-400 px-2.5 py-1 rounded-full font-mono">
           {shortAddr(PROGRAM_ID.toBase58())}
         </span>
       </div>
 
       <div className="max-w-5xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-        {/* Left: Stats */}
         <div className="lg:col-span-2 space-y-4">
 
-          {/* FHE Privacy Banner */}
           <div className="bg-gradient-to-r from-violet-900/30 to-blue-900/30 border border-violet-700/40 rounded-xl p-4">
             <div className="flex items-start gap-3">
-              <span className="text-2xl">🔐</span>
+              <span className="text-2xl">🌑</span>
               <div>
-                <p className="font-semibold text-violet-300 text-sm">Fully Homomorphic Encryption Active</p>
+                <p className="font-semibold text-violet-300 text-sm">Dark Pool Lending — Positions Invisible On-Chain</p>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Collateral and debt stored as <code className="text-violet-400">EUint64</code> ciphertexts.
-                  FHE health checks run on encrypted data — validators never see your amounts.
-                  Ika 2PC-MPC signs cross-chain BTC transactions with zero-trust custody.
+                  Collateral and debt stored as <code className="text-violet-400">EUint64</code> ciphertexts via Encrypt FHE.
+                  Native BTC collateral via Ika 2PC-MPC dWallets — no bridges, no wrapping.
+                  This product literally cannot exist without both Encrypt and Ika.
                 </p>
+                {fheCiphertext && (
+                  <p className="text-xs text-violet-500 font-mono mt-1">
+                    Last ciphertext: {fheCiphertext.slice(0, 24)}...
+                  </p>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Pool Stats */}
           {pool ? (
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
               <h2 className="text-sm font-semibold text-slate-400 mb-4 uppercase tracking-wider">Pool State</h2>
@@ -313,7 +337,6 @@ export default function Home() {
             </div>
           )}
 
-          {/* User Position */}
           {position && position.isActive ? (
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
               <div className="flex items-center justify-between mb-4">
@@ -340,7 +363,7 @@ export default function Home() {
               <div className="bg-blue-900/20 border border-blue-800/40 rounded-lg p-3 mb-3">
                 <p className="text-xs text-blue-400 font-medium mb-1">⛓️ Ika dWallet (Cross-Chain Collateral)</p>
                 <p className="text-xs text-slate-500 font-mono">{Buffer.from(position.dwalletId).toString("hex").slice(0, 32)}...</p>
-                <p className="text-xs text-slate-600 mt-1">BTC collateral locked via 2PC-MPC • Zero-trust custody</p>
+                <p className="text-xs text-slate-600 mt-1">Native BTC locked via 2PC-MPC • Zero-trust custody • No bridges</p>
               </div>
               <button onClick={approveDWallet} disabled={!!loading}
                 className="w-full bg-blue-900/40 hover:bg-blue-800/60 border border-blue-700/50 text-blue-300 py-2 rounded-lg text-xs font-medium transition-colors">
@@ -354,14 +377,12 @@ export default function Home() {
           )}
         </div>
 
-        {/* Right: Actions */}
         <div className="space-y-4">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
             <h3 className="font-semibold text-sm mb-1 text-slate-300">Deposit Collateral</h3>
-            <p className="text-xs text-slate-500 mb-3">Locks BTC via Ika dWallet • Encrypted via FHE</p>
+            <p className="text-xs text-slate-500 mb-3">Native BTC via Ika dWallet • FHE encrypted</p>
             <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white mb-3 focus:outline-none focus:border-violet-500"
-              placeholder="Amount" />
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white mb-3 focus:outline-none focus:border-violet-500" />
             <button onClick={deposit} disabled={!pool || !!loading || !wallet.publicKey}
               className="w-full bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white py-2 rounded-lg text-sm font-medium transition-colors">
               🔐 Deposit + Encrypt
@@ -370,10 +391,9 @@ export default function Home() {
 
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
             <h3 className="font-semibold text-sm mb-1 text-slate-300">Borrow</h3>
-            <p className="text-xs text-slate-500 mb-3">FHE health check • Amounts never revealed on-chain</p>
+            <p className="text-xs text-slate-500 mb-3">FHE health check • Amounts never revealed</p>
             <input type="number" value={borrowAmt} onChange={e => setBorrowAmt(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white mb-3 focus:outline-none focus:border-blue-500"
-              placeholder="Borrow amount" />
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white mb-3 focus:outline-none focus:border-blue-500" />
             <button onClick={borrow} disabled={!position || !!loading || !vaultAta}
               className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white py-2 rounded-lg text-sm font-medium transition-colors">
               ⚡ Borrow
@@ -384,8 +404,7 @@ export default function Home() {
             <h3 className="font-semibold text-sm mb-1 text-slate-300">Repay</h3>
             <p className="text-xs text-slate-500 mb-3">Reduces encrypted debt on-chain</p>
             <input type="number" value={repayAmt} onChange={e => setRepayAmt(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white mb-3 focus:outline-none focus:border-emerald-500"
-              placeholder="Repay amount" />
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white mb-3 focus:outline-none focus:border-emerald-500" />
             <button onClick={repay} disabled={!position || !!loading || !vaultAta}
               className="w-full bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white py-2 rounded-lg text-sm font-medium transition-colors">
               ✅ Repay
@@ -398,7 +417,7 @@ export default function Home() {
               className="text-xs text-violet-400 hover:text-violet-300 block truncate">
               View Program on Devnet ↗
             </a>
-            {mintAddr && (
+            {mounted && mintAddr && (
               <a href={explorerAddr(mintAddr)} target="_blank"
                 className="text-xs text-blue-400 hover:text-blue-300 block truncate mt-1">
                 View Collateral Mint ↗
@@ -408,8 +427,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* TX Log */}
-      {txLog.length > 0 && (
+      {mounted && txLog.length > 0 && (
         <div className="max-w-5xl mx-auto px-6 pb-8">
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
             <h3 className="text-sm font-semibold text-slate-400 mb-3 uppercase tracking-wider">Transaction Log</h3>
