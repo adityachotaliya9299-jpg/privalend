@@ -1,30 +1,17 @@
-"use client";
+import type { Metadata } from "next";
 import "./globals.css";
-import dynamic from "next/dynamic";
-import { useMemo } from "react";
-import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
-import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
-import { PhantomWalletAdapter, SolflareWalletAdapter } from "@solana/wallet-adapter-wallets";
-import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
-import { clusterApiUrl } from "@solana/web3.js";
-import "@solana/wallet-adapter-react-ui/styles.css";
+import { Providers } from "./providers";
+
+export const metadata: Metadata = {
+  title: "PrivaLend — Encrypted Cross-Chain Lending",
+  description: "Private lending using Encrypt FHE + Ika dWallets on Solana",
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  if (typeof window === "undefined") return (
-    <html lang="en"><body suppressHydrationWarning>{children}</body></html>
-  );
-  const network = WalletAdapterNetwork.Devnet;
-  const endpoint = useMemo(() => clusterApiUrl(network), [network]);
-  const wallets = useMemo(() => [new PhantomWalletAdapter(), new SolflareWalletAdapter()], [network]);
-
   return (
     <html lang="en">
       <body suppressHydrationWarning>
-        <ConnectionProvider endpoint={endpoint}>
-          <WalletProvider wallets={wallets} autoConnect>
-            <WalletModalProvider>{children}</WalletModalProvider>
-          </WalletProvider>
-        </ConnectionProvider>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
