@@ -14,7 +14,7 @@
  * In production these functions run ON-CHAIN via encrypt-anchor.
  * Pre-alpha: Executed as plaintext with same API surface.
  */
-
+import { FHELogger } from "./fhe-logger";
 export type EUint64 = bigint; // Represents encrypted uint64
 
 /**
@@ -34,7 +34,6 @@ export type EUint64 = bigint; // Represents encrypted uint64
  * On-chain: execute_graph(AddCollateral { existing, new_amount })
  */
 export function fheAddCollateral(existing: EUint64, newAmount: EUint64): EUint64 {
-  console.log("[ENCRYPT FHE] execute_graph: AddCollateral");
   console.log("[ENCRYPT FHE] Input: encrypted EUint64 ciphertexts (not revealed)");
   console.log("[ENCRYPT FHE] Executor evaluates homomorphically without decryption");
   return existing + newAmount;
