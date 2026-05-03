@@ -4,7 +4,7 @@ import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import dynamic from "next/dynamic";
 const WalletMultiButton = dynamic(
   () => import("@solana/wallet-adapter-react-ui").then(m => m.WalletMultiButton),
-  { ssr: false }
+  { ssr: false, loading: () => <button className="bg-violet-700 text-white px-4 py-2 rounded-lg text-sm">Connect Wallet</button> }
 );
 import { PublicKey, SystemProgram, Transaction, Keypair } from "@solana/web3.js";
 import { AnchorProvider, Program, BN, Idl } from "@coral-xyz/anchor";
@@ -294,10 +294,10 @@ FHELogger.executeGraph("AddCollateral");
 
       {/* Architecture strip */}
       <div className="border-b border-white/5 px-6 py-2.5 flex items-center gap-4 text-xs text-slate-400 bg-white/[0.01] overflow-x-auto backdrop-blur-sm">
-       <a href="https://github.com/encrypt-labs" target="_blank" className="text-violet-400 font-semibold whitespace-nowrap hover:underline">Encrypt (FHE)</a>
+       <a href="https://chainwire.org/2026/03/31/encrypt-is-coming-to-solana-to-power-encrypted-capital-markets/" target="_blank" className="text-violet-400 font-semibold whitespace-nowrap hover:underline">Encrypt (FHE)</a>
         <span className="text-slate-500">→ Private computation</span>
         <span className="text-slate-700">|</span>
-        <a href="https://docs.ika.xyz/sdk/" target="_blank" className="text-blue-400 font-semibold whitespace-nowrap hover:underline">Ika (2PC-MPC)</a>
+        <a href="https://www.npmjs.com/package/@ika.xyz/sdk" target="_blank" className="text-blue-400 font-semibold whitespace-nowrap hover:underline">Ika (2PC-MPC)</a>
         <span className="text-slate-500">→ Native BTC custody</span>
         <span className="text-slate-700">|</span>
         <a href="https://explorer.solana.com/address/7WLWShzAzU747a5WVSTHJ7YUNPGPSyjewetJ5YfNA7Sb?cluster=devnet" target="_blank" className="text-emerald-400 font-semibold whitespace-nowrap hover:underline">Solana</a>

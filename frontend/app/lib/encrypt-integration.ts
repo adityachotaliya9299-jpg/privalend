@@ -14,7 +14,7 @@
  * In production these functions run ON-CHAIN via encrypt-anchor.
  * Pre-alpha: Executed as plaintext with same API surface.
  */
-import { FHELogger } from "./fhe-logger";
+
 export type EUint64 = bigint; // Represents encrypted uint64
 
 /**
