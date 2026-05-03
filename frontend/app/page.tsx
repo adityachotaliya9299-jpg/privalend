@@ -308,9 +308,9 @@ FHELogger.executeGraph("AddCollateral");
       </div>
 
       {/* HERO */}
-      <div className="px-6 py-12 lg:py-16 relative">
+      <div className="px-6 py-6 lg:py-8 relative">
         <div className="max-w-5xl mx-auto text-center md:text-left">
-          <h1 className="text-4xl md:text-6xl font-extrabold text-white mb-4 tracking-tight leading-tight">
+          <h1 className="text-3xl md:text-4xl font-extrabold text-white mb-3 tracking-tight leading-tight">
             Private BTC Lending <br className="md:hidden" />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-400 drop-shadow-sm">
                Invisible On-Chain
@@ -403,7 +403,7 @@ FHELogger.executeGraph("AddCollateral");
           )}
 
           {/* SPLIT PANEL: What blockchain sees vs what you see */}
-          {(position || whaleMode) && (
+          {whaleMode && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Left: blockchain view */}
               <div className="bg-red-950/10 border border-red-500/20 rounded-2xl p-5 backdrop-blur-sm relative overflow-hidden group hover:border-red-500/40 transition-colors">
