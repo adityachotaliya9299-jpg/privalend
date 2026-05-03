@@ -294,14 +294,14 @@ FHELogger.executeGraph("AddCollateral");
 
       {/* Architecture strip */}
       <div className="border-b border-white/5 px-6 py-2.5 flex items-center gap-4 text-xs text-slate-400 bg-white/[0.01] overflow-x-auto backdrop-blur-sm">
-        <span className="text-violet-400 font-semibold whitespace-nowrap drop-shadow-[0_0_5px_rgba(167,139,250,0.4)]">Encrypt (FHE)</span>
-        <span>→ Private computation</span>
+       <a href="https://github.com/encrypt-labs" target="_blank" className="text-violet-400 font-semibold whitespace-nowrap hover:underline">Encrypt (FHE)</a>
+        <span className="text-slate-500">→ Private computation</span>
         <span className="text-slate-700">|</span>
-        <span className="text-blue-400 font-semibold whitespace-nowrap drop-shadow-[0_0_5px_rgba(96,165,250,0.4)]">Ika (2PC-MPC)</span>
-        <span>→ Native BTC custody</span>
+        <a href="https://docs.ika.xyz/sdk/" target="_blank" className="text-blue-400 font-semibold whitespace-nowrap hover:underline">Ika (2PC-MPC)</a>
+        <span className="text-slate-500">→ Native BTC custody</span>
         <span className="text-slate-700">|</span>
-        <span className="text-emerald-400 font-semibold whitespace-nowrap drop-shadow-[0_0_5px_rgba(52,211,153,0.4)]">Solana</span>
-        <span>→ Execution layer</span>
+        <a href="https://explorer.solana.com/address/7WLWShzAzU747a5WVSTHJ7YUNPGPSyjewetJ5YfNA7Sb?cluster=devnet" target="_blank" className="text-emerald-400 font-semibold whitespace-nowrap hover:underline">Solana</a>
+        <span className="text-slate-500">→ Execution layer</span>
         <span className="text-slate-700 ml-auto hidden md:inline">|</span>
         <a href="/privacy" className="text-violet-400 hover:text-violet-300 whitespace-nowrap transition-colors ml-auto md:ml-0 font-medium">🔍 Privacy Proof →</a>
         <a href={explorerAddr(PROGRAM_ID.toBase58())} target="_blank" className="text-slate-500 hover:text-slate-300 whitespace-nowrap transition-colors font-mono">{shortAddr(PROGRAM_ID.toBase58())} ↗</a>
@@ -334,7 +334,7 @@ FHELogger.executeGraph("AddCollateral");
             <span className="text-slate-500 text-xs md:text-sm md:ml-2">Zero MEV. Zero sniper bots.</span>
 
 <div className="mt-3 text-sm text-amber-300/80 border border-amber-500/20 bg-amber-500/5 px-4 py-2 rounded-lg w-fit">
-  💡 A $10M position on Aave is a target. Here, it's a ghost.
+  {"💡 A $10M position on Aave is a target. Here, it is a ghost."}
 </div>
           </div>
         </div>
@@ -360,7 +360,7 @@ FHELogger.executeGraph("AddCollateral");
           </div>
           {whaleMode && (
             <div className="flex items-center gap-2 text-xs text-amber-200/90 border border-amber-500/30 bg-amber-500/10 px-4 py-2 rounded-lg ml-auto animate-in fade-in zoom-in duration-300">
-              <span className="text-base">⚠️</span> On traditional markets, this size attracts snipers. Here, it's a ghost.
+              <span className="text-base">⚠️</span>{" On traditional markets, this size attracts snipers. Here, it is a ghost."}
             </div>
           )}
         </div>
