@@ -60,10 +60,14 @@ export async function createDWalletForCollateral(
     const combinedKeyHash = sha256(userPubShare);
     const dwalletIdBytes = combinedKeyHash.slice(0, 32);
 
-    console.log("[IKA 2PC-MPC] Protocol: secp256k1 ECDSA with 2-party computation");
+    const { FHELogger } = await import("./fhe-logger");
+FHELogger.dkgStart();
+console.log("[IKA 2PC-MPC] Protocol: secp256k1 ECDSA with 2-party computation");
     console.log("[IKA 2PC-MPC] User key share generated (never leaves device)");
     console.log("[IKA 2PC-MPC] Network: Ika validators hold distributed key shares");
-    console.log("[IKA 2PC-MPC] DKG complete. Public key:", 
+    FHELogger.dkgComplete(Buffer.from(userPubShare).toString("hex"));
+FHELogger.btcLocked();
+console.log("[IKA 2PC-MPC] DKG complete. Public key:",
       Buffer.from(userPubShare).toString("hex").slice(0, 16) + "...");
     console.log("[IKA 2PC-MPC] dWallet ID:", 
       Buffer.from(dwalletIdBytes).toString("hex").slice(0, 16) + "...");
