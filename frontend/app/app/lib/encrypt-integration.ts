@@ -16,6 +16,8 @@
  */
 
 export type EUint64 = bigint; // Represents encrypted uint64
+export const ENCRYPT_GRPC_ENDPOINT = process.env.NEXT_PUBLIC_ENCRYPT_GRPC || "https://pre-alpha-dev-1.encrypt.ika-network.net:443";
+export const ENCRYPT_PROGRAM_ID = process.env.NEXT_PUBLIC_ENCRYPT_PROGRAM || "4ebfzWdKnrnGseuQpezXdG8yCdHqwQ1SSBHD3bWArND8";
 
 /**
  * FHE COMPUTATION GRAPH DEFINITIONS

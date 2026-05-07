@@ -19,7 +19,10 @@ import { secp256k1 } from "@noble/curves/secp256k1";
 import { sha256 } from "@noble/hashes/sha256";
 
 const IKA_NETWORK = "testnet";
-const IKA_GRPC_ENDPOINT = "https://ika-grpc.devnet.ika.xyz";
+
+
+export const IKA_GRPC_ENDPOINT = process.env.NEXT_PUBLIC_IKA_GRPC || "https://pre-alpha-dev-1.ika.ika-network.net:443";
+export const IKA_PROGRAM_ID = process.env.NEXT_PUBLIC_IKA_PROGRAM || "87W54kGYFQ1rgWqMeu4XTPHWXWmXSQCcjm8vCTfiq1oY";
 
 export interface DWalletCreationResult {
   dwalletId: string;

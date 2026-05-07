@@ -1,7 +1,7 @@
 import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js";
 import { AnchorProvider, Program, BN } from "@coral-xyz/anchor";
 
-export const PROGRAM_ID = new PublicKey("7WLWShzAzU747a5WVSTHJ7YUNPGPSyjewetJ5YfNA7Sb");
+export const PROGRAM_ID = new PublicKey(process.env.NEXT_PUBLIC_PROGRAM_ID || "7WLWShzAzU747a5WVSTHJ7YUNPGPSyjewetJ5YfNA7Sb");
 export const NETWORK = clusterApiUrl("devnet");
 export const EXPLORER = "https://explorer.solana.com";
 
