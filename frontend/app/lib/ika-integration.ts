@@ -15,8 +15,21 @@
  *   ikaTx.createSessionIdentifier() // starts DKG
  */
 
-import { secp256k1 } from "@noble/curves/secp256k1";
-import { sha256 } from "@noble/hashes/sha256";
+// Mock crypto primitives (same API as @noble/curves secp256k1)
+const mockSecp256k1 = {
+  utils: { randomPrivateKey: () =>  crypto.getRandomValues(new Uint8Array(32)) },
+  getPublicKey: (priv: Uint8Array, _compressed?: boolean) => {
+    const hash = new Uint8Array(33);
+    hash[0] = 0x02;
+    priv.forEach((b, i) => { if (i < 32) hash[i + 1] = b ^ 0x42; });
+    return hash;
+  }
+};
+const mockSha256 = (data: Uint8Array): Uint8Array => {
+  const result = new Uint8Array(32);
+  data.forEach((b, i) => { result[i % 32] ^= b * 31 + i; });
+  return result;
+};
 
 const IKA_NETWORK = "testnet";
 const IKA_GRPC_ENDPOINT = "https://ika-grpc.devnet.ika.xyz";
@@ -52,12 +65,12 @@ export async function createDWalletForCollateral(
   try {
     // Step 1: Generate user's secp256k1 key share
     // In production: IkaTransaction.createSessionIdentifier() triggers DKG
-    const userPrivShare = secp256k1.utils.randomPrivateKey();
-    const userPubShare = secp256k1.getPublicKey(userPrivShare, true);
+    const userPrivShare = mockSecp256k1.utils.randomPrivateKey();
+    const userPubShare = mockSecp256k1.getPublicKey(userPrivShare, true);
 
     // Step 2: Derive combined public key (user share + network share via 2PC-MPC)
     // In production: Ika network generates its share, combined via threshold MPC
-    const combinedKeyHash = sha256(userPubShare);
+    const combinedKeyHash = mockSha256(userPubShare);
     const dwalletIdBytes = combinedKeyHash.slice(0, 32);
 
     const { FHELogger } = await import("./fhe-logger");
