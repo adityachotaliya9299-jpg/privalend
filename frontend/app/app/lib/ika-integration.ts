@@ -55,12 +55,12 @@ export async function createDWalletForCollateral(
   try {
     // Step 1: Generate user's secp256k1 key share
     // In production: IkaTransaction.createSessionIdentifier() triggers DKG
-    const userPrivShare = secp256k1.utils.randomPrivateKey();
-    const userPubShare = secp256k1.getPublicKey(userPrivShare, true);
+    const userPrivShare = mockSecp256k1.utils.randomPrivateKey();
+    const userPubShare = mockSecp256k1.getPublicKey(userPrivShare, true);
 
     // Step 2: Derive combined public key (user share + network share via 2PC-MPC)
     // In production: Ika network generates its share, combined via threshold MPC
-    const combinedKeyHash = sha256(userPubShare);
+    const combinedKeyHash = mockSha256(userPubShare);
     const dwalletIdBytes = combinedKeyHash.slice(0, 32);
 
     const { FHELogger } = await import("./fhe-logger");
