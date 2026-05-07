@@ -17,31 +17,13 @@ default = []
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]
-anchor-lang = { version = "0.31.1", features = ["init-if-needed"] }
-anchor-spl = "0.31.1"
+anchor-lang = { version = "0.32", features = ["init-if-needed"] }
+anchor-spl = "0.32"
 
+# Encrypt FHE — real pre-alpha from dwallet-labs
+encrypt-types = { git = "https://github.com/dwallet-labs/encrypt-pre-alpha" }
+encrypt-dsl = { package = "encrypt-solana-dsl", git = "https://github.com/dwallet-labs/encrypt-pre-alpha" }
+encrypt-anchor = { git = "https://github.com/dwallet-labs/encrypt-pre-alpha" }
 
-# ─── Encrypt FHE Pre-Alpha ───────────────────────────────────────────────────
-# Real crates require Rust edition2024 (Rust 1.85+) — not yet in anchor-sbf
-# Uncomment when anchor-sbf upgrades toolchain:
-# encrypt-types    = { git = "https://github.com/dwallet-labs/encrypt-pre-alpha" }
-# encrypt-dsl      = { package = "encrypt-solana-dsl", git = "https://github.com/dwallet-labs/encrypt-pre-alpha" }
-# encrypt-anchor   = { git = "https://github.com/dwallet-labs/encrypt-pre-alpha" }
-# gRPC endpoint:   https://pre-alpha-dev-1.encrypt.ika-network.net:443
-# Program ID:      4ebfzWdKnrnGseuQpezXdG8yCdHqwQ1SSBHD3bWArND8
-
-# ─── Ika dWallet Pre-Alpha ───────────────────────────────────────────────────
-# Real crates require Rust edition2024 (Rust 1.85+) — not yet in anchor-sbf
-# Uncomment when anchor-sbf upgrades toolchain:
-# ika-dwallet-anchor = { git = "https://github.com/dwallet-labs/ika-pre-alpha" }
-# gRPC endpoint:   https://pre-alpha-dev-1.ika.ika-network.net:443
-# Program ID:      87W54kGYFQ1rgWqMeu4XTPHWXWmXSQCcjm8vCTfiq1oY
-
-[profile.release]
-overflow-checks = true
-lto = "fat"
-codegen-units = 1
-[profile.release.build-override]
-opt-level = 3
-incremental = false
-codegen-units = 1
+# Ika dWallet — real pre-alpha from dwallet-labs
+ika-dwallet-anchor = { git = "https://github.com/dwallet-labs/ika-pre-alpha" }
