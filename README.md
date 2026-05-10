@@ -20,6 +20,11 @@ Validators see nothing. MEV bots cannot attack you.
 
 ---
 
+## Demo Video
+[Project Demo](https://www.loom.com/share/c60e8c1f48a34ae09dc525ccb83a3445)
+
+---
+
 ## The Problem
 
 Every DeFi lending protocol today is fully transparent:
